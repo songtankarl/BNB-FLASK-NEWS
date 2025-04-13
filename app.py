@@ -17,7 +17,8 @@ def home():
 @app.route("/api/news")
 def news():
     headers = {"User-Agent": "Mozilla/5.0"}
-    base_url = "https://search.naver.com/search.naver?where=news&query=비트코인&start="
+    queries = ["BNB", "바이낸스"]
+    base_url = "https://search.naver.com/search.naver?where=news&query={queries}&start="
 
     today = datetime.now().date()
     targets = [today - timedelta(days=i) for i in range(3)]
