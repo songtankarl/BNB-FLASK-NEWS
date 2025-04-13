@@ -27,11 +27,9 @@ def news():
 def classify(date_str, article):
     d = date_str.strip()
     article_date = None
-
     try:
         now = datetime.now()
-        # 상대적 날짜
-        if "초 전" in d or "분 전" in d or "시간 전" in d or "방금 전" in d or "오늘" in d:
+        if any(x in d for x in ["초 전", "분 전", "시간 전", "방금 전", "오늘"]):
             article_date = today
         elif "어제" in d:
             article_date = today - timedelta(days=1)
@@ -42,18 +40,19 @@ def classify(date_str, article):
             article_date = today - timedelta(days=days)
         else:
             try:
-                # 절대 날짜: 2025.04.11. → datetime 객체로 변환
                 clean_date = d.replace(".", "").replace(" ", "")
                 parsed_date = datetime.strptime(clean_date, "%Y%m%d")
                 article_date = parsed_date.date()
-            except:
+            except Exception as e:
+                print(f"❌ 날짜 파싱 실패: {d} → {e}")
                 return
-    except:
+    except Exception as e:
+        print(f"⛔ classify 오류: {d} → {e}")
         return
 
-    # 오늘 ~ 3일 전까지만 분류
     if article_date in date_map and len(date_map[article_date]) < 30:
         date_map[article_date].append(article)
+        
     count = 0
     for query in queries:
         for page in range(1, 11):
