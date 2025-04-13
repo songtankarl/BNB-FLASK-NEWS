@@ -21,7 +21,7 @@ def fetch_bnb_news():
     base_url = "https://search.naver.com/search.naver?where=news&query=BNB&start="
 
     today = now.date()
-    targets = [today - timedelta(days=i) for i in range(3)]
+    targets = [today - timedelta(days=i) for i in range(4)]
     date_map = {date: [] for date in targets}
 
     def classify_article(date_str, article):
