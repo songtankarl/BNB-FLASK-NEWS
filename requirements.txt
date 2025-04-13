@@ -1,6 +1,4 @@
-Flask
-flask-cors
-flask-caching
+flask
+flask_cors
 requests
 beautifulsoup4
-gunicorn

@@ -1,42 +1,40 @@
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
-from flask_caching import Cache
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
-cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
+CORS(app)
 
-@app.route("/")
-def home():
-    return render_template("index.html")
+# 서버 캐싱: 5분 단위로 업데이트
+cached_data = None
+last_fetched = None
 
-@cache.cached(timeout=300)
-@app.route("/api/news")
-def news():
+def fetch_bnb_news():
+    global cached_data, last_fetched
+    now = datetime.now()
+    if last_fetched and (now - last_fetched).seconds < 300:
+        return cached_data
+
     headers = {"User-Agent": "Mozilla/5.0"}
     base_url = "https://search.naver.com/search.naver?where=news&query=BNB&start="
 
-    today = datetime.now().date()
-    targets = [today - timedelta(days=i) for i in range(4)]
+    today = now.date()
+    targets = [today - timedelta(days=i) for i in range(3)]
     date_map = {date: [] for date in targets}
 
-    def classify(date_str, article):
+    def classify_article(date_str, article):
         d = date_str.strip()
         article_date = None
         try:
             if "일 전" in d:
-                days = int(d.replace("일 전", "").strip())
-                article_date = today - timedelta(days=days)
+                days_ago = int(d.replace("일 전", "").strip())
+                article_date = today - timedelta(days=days_ago)
             elif "시간 전" in d or "분 전" in d:
                 article_date = today
             else:
-                try:
-                    article_date = datetime.strptime(d, "%Y.%m.%d.").date()
-                except:
-                    return
+                article_date = datetime.strptime(d, "%Y.%m.%d.").date()
         except:
             return
         if article_date in date_map and len(date_map[article_date]) < 30:
@@ -44,31 +42,53 @@ def news():
 
     count = 0
     for page in range(1, 11):
-        url = base_url + str((page - 1) * 10 + 1)
-        soup = BeautifulSoup(requests.get(url, headers=headers).text, "html.parser")
+        start = (page - 1) * 10 + 1
+        url = base_url + str(start)
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, "html.parser")
+
         for item in soup.select("div.news_area"):
-            a = item.select_one("a.news_tit")
-            p = item.select_one("a.info.press")
-            d = item.select_one("span.info")
-            if not a or not p or not d:
+            a_tag = item.select_one("a.news_tit")
+            press_tag = item.select_one("a.info.press")
+            date_tag = item.select("span.info")[-1]
+
+            if not a_tag or not press_tag or not date_tag:
                 continue
+
+            title = a_tag.get_text(strip=True)
+            link = a_tag["href"]
+            press = press_tag.get_text(strip=True).replace("언론사 선정", "").strip()
+            date_str = date_tag.get_text(strip=True)
+
             article = {
-                "title": a.get_text(strip=True),
-                "url": a["href"],
-                "press": p.get_text(strip=True).replace("언론사 선정", "").strip(),
-                "date": d.get_text(strip=True)
+                "title": title,
+                "url": link,
+                "press": press,
+                "date": date_str
             }
-            classify(article["date"], article)
+            classify_article(date_str, article)
             count += 1
             if count >= 100:
                 break
         if count >= 100:
             break
 
-    result = {dt.strftime("%Y년 %m월 %d일"): date_map.get(dt, []) for dt in targets}
-    return jsonify(result)
+    result = {}
+    for dt in targets:
+        key = dt.strftime("%Y년 %m월 %d일")
+        result[key] = date_map.get(dt, [])
 
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    cached_data = result
+    last_fetched = now
+    return result
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/news')
+def api_news():
+    return jsonify(fetch_bnb_news())
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=8000)
