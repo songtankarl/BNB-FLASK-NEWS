@@ -49,19 +49,28 @@ def fetch_naver_news():
     targets = [today - timedelta(days=i) for i in range(4)]
     date_map = {date: [] for date in targets}
 
-    def classify_article(date_str, article):
-        try:
-            if "일 전" in date_str:
-                days_ago = int(date_str.replace("일 전", "").strip())
-                article_date = today - timedelta(days=days_ago)
-            elif "시간 전" in date_str or "분 전" in date_str:
-                article_date = today
-            else:
-                article_date = datetime.strptime(date_str.strip(), "%Y.%m.%d.").date()
-        except:
-            return
+def classify_article(date_str, article):
+    try:
+        if "일 전" in date_str:
+            days_ago = int(date_str.replace("일 전", "").strip())
+            article_date = today - timedelta(days=days_ago)
+        elif "시간 전" in date_str or "분 전" in date_str or "초 전" in date_str:
+            article_date = today
+        elif "어제" in date_str:
+            article_date = today - timedelta(days=1)
+        elif "오늘" in date_str:
+            article_date = today
+        else:
+            # 예: 2025.04.12. → 20250412 → 날짜 객체로 변환
+            clean_date = date_str.strip().replace(".", "")
+            article_date = datetime.strptime(clean_date, "%Y%m%d").date()
+
+        # 날짜가 원하는 범위 안에 있는 경우에만 저장
         if article_date in date_map and len(date_map[article_date]) < 30:
             date_map[article_date].append(article)
+
+    except Exception as e:
+        print(f"⛔ 날짜 파싱 실패: {date_str} → {e}")
 
     for a in all_articles:
         classify_article(a["date"], a)
