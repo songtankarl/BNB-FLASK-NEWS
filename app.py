@@ -3,6 +3,7 @@ from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -94,4 +95,11 @@ def get_news():
     return jsonify(data)
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(
+        host="0.0.0.0",  # ← 외부 접속 허용
+        port=int(os.environ.get("PORT", 5000)),  # ← Railway 환경에 맞게 포트 설정
+        debug=True
+    )
+
+
+
