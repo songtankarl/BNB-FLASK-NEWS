@@ -1,93 +1,91 @@
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
-from flask_caching import Cache
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import os
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
-cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
+CORS(app)
 
-@app.route("/")
-def home():
-    return render_template("index.html")
+cache = {"timestamp": None, "data": None}
 
-@cache.cached(timeout=300)
-@app.route("/api/news")
-def news():
+def fetch_naver_news():
     headers = {"User-Agent": "Mozilla/5.0"}
     queries = ["BNB", "바이낸스"]
-    base_url = "https://search.naver.com/search.naver?where=news&query={}&start={}"
+    all_articles = []
 
-    today = datetime.now().date()
+    for query in queries:
+        base_url = f"https://search.naver.com/search.naver?where=news&query={query}&start="
+        today = datetime.now().date()
+        for page in range(1, 11):
+            start = (page - 1) * 10 + 1
+            url = base_url + str(start)
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.text, "html.parser")
+            for item in soup.select("div.news_area"):
+                a_tag = item.select_one("a.news_tit")
+                press_tag = item.select_one("a.info.press")
+                date_tag = item.select_one("span.info")
+
+                if not a_tag or not press_tag or not date_tag:
+                    continue
+
+                title = a_tag.get_text(strip=True)
+                link = a_tag["href"]
+                press = press_tag.get_text(strip=True).replace("언론사 선정", "").strip()
+                date_str = date_tag.get_text(strip=True)
+
+                article = {
+                    "title": title,
+                    "url": link,
+                    "press": press,
+                    "date": date_str
+                }
+
+                all_articles.append(article)
+
+    # 날짜별 분류
     targets = [today - timedelta(days=i) for i in range(4)]
     date_map = {date: [] for date in targets}
 
-def classify(date_str, article):
-    d = date_str.strip()
-    article_date = None
-    try:
-        now = datetime.now()
-        if any(x in d for x in ["초 전", "분 전", "시간 전", "방금 전", "오늘"]):
-            article_date = today
-        elif "어제" in d:
-            article_date = today - timedelta(days=1)
-        elif "그제" in d:
-            article_date = today - timedelta(days=2)
-        elif "일 전" in d:
-            days = int(d.replace("일 전", "").strip())
-            article_date = today - timedelta(days=days)
-        else:
-            try:
-                clean_date = d.replace(".", "").replace(" ", "")
-                parsed_date = datetime.strptime(clean_date, "%Y%m%d")
-                article_date = parsed_date.date()
-            except Exception as e:
-                print(f"❌ 날짜 파싱 실패: {d} → {e}")
-                return
-    except Exception as e:
-        print(f"⛔ classify 오류: {d} → {e}")
-        return
+    def classify_article(date_str, article):
+        try:
+            if "일 전" in date_str:
+                days_ago = int(date_str.replace("일 전", "").strip())
+                article_date = today - timedelta(days=days_ago)
+            elif "시간 전" in date_str or "분 전" in date_str:
+                article_date = today
+            else:
+                article_date = datetime.strptime(date_str.strip(), "%Y.%m.%d.").date()
+        except:
+            return
+        if article_date in date_map and len(date_map[article_date]) < 30:
+            date_map[article_date].append(article)
 
-    if article_date in date_map and len(date_map[article_date]) < 30:
-        date_map[article_date].append(article)
-        
-    count = 0
-    for query in queries:
-        for page in range(1, 11):
-            start = (page - 1) * 10 + 1
-            url = base_url.format(query, start)
-            try:
-                response = requests.get(url, headers=headers, timeout=5)
-                soup = BeautifulSoup(response.text, "html.parser")
-            except Exception as e:
-                print(f"⛔ 요청 실패: {e}")
-                continue
+    for a in all_articles:
+        classify_article(a["date"], a)
 
-            for item in soup.select("div.news_area"):
-                a = item.select_one("a.news_tit")
-                p = item.select_one("a.info.press")
-                d = item.select_one("span.info")
-                if not a or not p or not d:
-                    continue
-                article = {
-                    "title": a.get_text(strip=True),
-                    "url": a["href"],
-                    "press": p.get_text(strip=True).replace("언론사 선정", "").strip(),
-                    "date": d.get_text(strip=True)
-                }
-                classify(article["date"], article)
-                count += 1
-                if count >= 100:
-                    break
-            if count >= 100:
-                break
+    result = {}
+    for dt in targets:
+        key = dt.strftime("%Y년 %m월 %d일")
+        result[key] = date_map.get(dt, [])
 
-    result = {dt.strftime("%Y년 %m월 %d일"): date_map.get(dt, []) for dt in targets}
-    return jsonify(result)
+    return result
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/api/news")
+def get_news():
+    now = datetime.now()
+    if cache["timestamp"] and (now - cache["timestamp"]).total_seconds() < 300:
+        return jsonify(cache["data"])
+    data = fetch_naver_news()
+    cache["timestamp"] = now
+    cache["data"] = data
+    return jsonify(data)
 
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
