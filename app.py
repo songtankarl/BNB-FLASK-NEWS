@@ -24,25 +24,36 @@ def news():
     targets = [today - timedelta(days=i) for i in range(4)]
     date_map = {date: [] for date in targets}
 
-    def classify(date_str, article):
-        d = date_str.strip()
-        article_date = None
-        try:
-            if "일 전" in d:
-                days = int(d.replace("일 전", "").strip())
-                article_date = today - timedelta(days=days)
-            elif "시간 전" in d or "분 전" in d:
-                article_date = today
-            else:
-                try:
-                    article_date = datetime.strptime(d, "%Y.%m.%d.").date()
-                except:
-                    return
-        except:
-            return
-        if article_date in date_map and len(date_map[article_date]) < 30:
-            date_map[article_date].append(article)
+def classify(date_str, article):
+    d = date_str.strip()
+    article_date = None
 
+    try:
+        now = datetime.now()
+        # 상대적 날짜
+        if "초 전" in d or "분 전" in d or "시간 전" in d or "방금 전" in d or "오늘" in d:
+            article_date = today
+        elif "어제" in d:
+            article_date = today - timedelta(days=1)
+        elif "그제" in d:
+            article_date = today - timedelta(days=2)
+        elif "일 전" in d:
+            days = int(d.replace("일 전", "").strip())
+            article_date = today - timedelta(days=days)
+        else:
+            try:
+                # 절대 날짜: 2025.04.11. → datetime 객체로 변환
+                clean_date = d.replace(".", "").replace(" ", "")
+                parsed_date = datetime.strptime(clean_date, "%Y%m%d")
+                article_date = parsed_date.date()
+            except:
+                return
+    except:
+        return
+
+    # 오늘 ~ 3일 전까지만 분류
+    if article_date in date_map and len(date_map[article_date]) < 30:
+        date_map[article_date].append(article)
     count = 0
     for query in queries:
         for page in range(1, 11):
