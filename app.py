@@ -11,7 +11,7 @@ cache = {"timestamp": None, "data": None}
 
 def fetch_naver_news():
     headers = {"User-Agent": "Mozilla/5.0"}
-    base_url = "https://search.naver.com/search.naver?where=news&query=BNB&start="
+    base_url = "https://search.naver.com/search.naver?where=news&query=BNB+OR+바이낸스&start="
 
     today = datetime.now().date()
     targets = [today - timedelta(days=i) for i in range(4)]
