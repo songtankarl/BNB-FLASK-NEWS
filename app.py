@@ -12,7 +12,7 @@ cache = {"timestamp": None, "data": None}
 
 def fetch_naver_news():
     headers = {"User-Agent": "Mozilla/5.0"}
-    queries = ["BNB OR 바이낸스"]
+    queries = ["BNB", "바이낸스"]
     all_articles = []
 
     for query in queries:
