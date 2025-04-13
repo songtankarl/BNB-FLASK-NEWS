@@ -12,66 +12,59 @@ cache = {"timestamp": None, "data": None}
 
 def fetch_naver_news():
     headers = {"User-Agent": "Mozilla/5.0"}
-    base_url = "https://search.naver.com/search.naver?where=news&query=BNB+OR+바이낸스&start="
+    queries = ["BNB", "바이낸스"]
+    all_articles = []
 
-    today = datetime.now().date()
+    for query in queries:
+        base_url = f"https://search.naver.com/search.naver?where=news&query={query}&start="
+        today = datetime.now().date()
+        for page in range(1, 11):
+            start = (page - 1) * 10 + 1
+            url = base_url + str(start)
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.text, "html.parser")
+            for item in soup.select("div.news_area"):
+                a_tag = item.select_one("a.news_tit")
+                press_tag = item.select_one("a.info.press")
+                date_tag = item.select_one("span.info")
+
+                if not a_tag or not press_tag or not date_tag:
+                    continue
+
+                title = a_tag.get_text(strip=True)
+                link = a_tag["href"]
+                press = press_tag.get_text(strip=True).replace("언론사 선정", "").strip()
+                date_str = date_tag.get_text(strip=True)
+
+                article = {
+                    "title": title,
+                    "url": link,
+                    "press": press,
+                    "date": date_str
+                }
+
+                all_articles.append(article)
+
+    # 날짜별 분류
     targets = [today - timedelta(days=i) for i in range(4)]
     date_map = {date: [] for date in targets}
 
     def classify_article(date_str, article):
-        d = date_str.strip()
-        article_date = None
         try:
-            if "일 전" in d:
-                days_ago = int(d.replace("일 전", "").strip())
+            if "일 전" in date_str:
+                days_ago = int(date_str.replace("일 전", "").strip())
                 article_date = today - timedelta(days=days_ago)
-            elif "시간 전" in d or "분 전" in d:
+            elif "시간 전" in date_str or "분 전" in date_str:
                 article_date = today
             else:
-                try:
-                    article_date = datetime.strptime(d, "%Y.%m.%d.").date()
-                except ValueError:
-                    return
+                article_date = datetime.strptime(date_str.strip(), "%Y.%m.%d.").date()
         except:
             return
-
         if article_date in date_map and len(date_map[article_date]) < 30:
             date_map[article_date].append(article)
 
-    count = 0
-    for page in range(1, 11):
-        start = (page - 1) * 10 + 1
-        url = base_url + str(start)
-        response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        for item in soup.select("div.news_area"):
-            a_tag = item.select_one("a.news_tit")
-            press_tag = item.select_one("a.info.press")
-            date_tag = item.select_one("span.info")
-
-            if not a_tag or not press_tag or not date_tag:
-                continue
-
-            title = a_tag.get_text(strip=True)
-            link = a_tag["href"]
-            press = press_tag.get_text(strip=True).replace("언론사 선정", "").strip()
-            date_str = date_tag.get_text(strip=True)
-
-            article = {
-                "title": title,
-                "url": link,
-                "press": press,
-                "date": date_str
-            }
-
-            classify_article(date_str, article)
-
-            count += 1
-            if count >= 100:
-                break
-        if count >= 100:
-            break
+    for a in all_articles:
+        classify_article(a["date"], a)
 
     result = {}
     for dt in targets:
@@ -95,11 +88,4 @@ def get_news():
     return jsonify(data)
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",  # ← 외부 접속 허용
-        port=int(os.environ.get("PORT", 5000)),  # ← Railway 환경에 맞게 포트 설정
-        debug=True
-    )
-
-
-
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
