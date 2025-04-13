@@ -71,18 +71,6 @@ def classify_article(date_str, article):
 
     except Exception as e:
         print(f"⛔ 날짜 파싱 실패: {date_str} → {e}")
-
-    for a in all_articles:
-        classify_article(a["date"], a)
-
-    result = {}
-    for dt in targets:
-        key = dt.strftime("%Y년 %m월 %d일")
-        result[key] = date_map.get(dt, [])
-
-    return result
-
-@app.route("/")
 def index():
     return render_template("index.html")
 
