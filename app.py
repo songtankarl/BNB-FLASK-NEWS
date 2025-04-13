@@ -7,21 +7,14 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 CORS(app)
 
-# 서버 캐싱: 5분 단위로 업데이트
-cached_data = None
-last_fetched = None
+cache = {"timestamp": None, "data": None}
 
-def fetch_bnb_news():
-    global cached_data, last_fetched
-    now = datetime.now()
-    if last_fetched and (now - last_fetched).seconds < 300:
-        return cached_data
-
+def fetch_naver_news():
     headers = {"User-Agent": "Mozilla/5.0"}
     base_url = "https://search.naver.com/search.naver?where=news&query=BNB&start="
 
-    today = now.date()
-    targets = [today - timedelta(days=i) for i in range(4)]
+    today = datetime.now().date()
+    targets = [today - timedelta(days=i) for i in range(3)]
     date_map = {date: [] for date in targets}
 
     def classify_article(date_str, article):
@@ -34,9 +27,13 @@ def fetch_bnb_news():
             elif "시간 전" in d or "분 전" in d:
                 article_date = today
             else:
-                article_date = datetime.strptime(d, "%Y.%m.%d.").date()
+                try:
+                    article_date = datetime.strptime(d, "%Y.%m.%d.").date()
+                except ValueError:
+                    return
         except:
             return
+
         if article_date in date_map and len(date_map[article_date]) < 30:
             date_map[article_date].append(article)
 
@@ -50,7 +47,7 @@ def fetch_bnb_news():
         for item in soup.select("div.news_area"):
             a_tag = item.select_one("a.news_tit")
             press_tag = item.select_one("a.info.press")
-            date_tag = item.select("span.info")[-1]
+            date_tag = item.select_one("span.info")
 
             if not a_tag or not press_tag or not date_tag:
                 continue
@@ -66,7 +63,9 @@ def fetch_bnb_news():
                 "press": press,
                 "date": date_str
             }
+
             classify_article(date_str, article)
+
             count += 1
             if count >= 100:
                 break
@@ -78,17 +77,21 @@ def fetch_bnb_news():
         key = dt.strftime("%Y년 %m월 %d일")
         result[key] = date_map.get(dt, [])
 
-    cached_data = result
-    last_fetched = now
     return result
 
-@app.route('/')
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/api/news')
-def api_news():
-    return jsonify(fetch_bnb_news())
+@app.route("/api/news")
+def get_news():
+    now = datetime.now()
+    if cache["timestamp"] and (now - cache["timestamp"]).total_seconds() < 300:
+        return jsonify(cache["data"])
+    data = fetch_naver_news()
+    cache["timestamp"] = now
+    cache["data"] = data
+    return jsonify(data)
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8000)
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
