@@ -1,11 +1,54 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>실시간 업데이트</title>
+    <meta charset="UTF-8">
+    <title>BNB 뉴스</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: auto; }
+        h1 { color: #d62828; }
+        .date-block { margin-top: 30px; }
+        .article { margin: 5px 0; }
+        .article a { text-decoration: none; color: #0073aa; }
+    </style>
 </head>
 <body>
-  <h1>Flask API Endpoint</h1>
-  <p>이 페이지는 <code>/api/news</code>에서 JSON으로 뉴스 데이터를 제공합니다.</p>
+    <h1>BNB & 바이낸스 뉴스</h1>
+    <div id="news-container">뉴스를 불러오고 있습니다...</div>
+
+    <script>
+        fetch('/api/news')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('news-container');
+                container.innerHTML = '';
+
+                for (const [date, articles] of Object.entries(data)) {
+                    const block = document.createElement('div');
+                    block.className = 'date-block';
+                    const title = document.createElement('h2');
+                    title.textContent = date;
+                    block.appendChild(title);
+
+                    if (articles.length === 0) {
+                        const noData = document.createElement('p');
+                        noData.textContent = '해당 날짜의 기사가 없습니다.';
+                        block.appendChild(noData);
+                    } else {
+                        articles.forEach(article => {
+                            const item = document.createElement('div');
+                            item.className = 'article';
+                            item.innerHTML = `<a href="${article.url}" target="_blank">[${article.press}] ${article.title}</a>`;
+                            block.appendChild(item);
+                        });
+                    }
+
+                    container.appendChild(block);
+                }
+            })
+            .catch(err => {
+                document.getElementById('news-container').textContent = '뉴스를 불러오지 못했습니다.';
+                console.error(err);
+            });
+    </script>
 </body>
 </html>

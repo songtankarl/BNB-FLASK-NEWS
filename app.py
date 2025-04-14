@@ -15,14 +15,48 @@ def fetch_naver_news():
     queries = ["BNB", "바이낸스"]
     all_articles = []
 
+    now = datetime.now()
+    today = now.date()
+    targets = [today - timedelta(days=i) for i in range(4)]
+    date_map = {date: [] for date in targets}
+
+    def classify_article(date_str, article):
+        d = date_str.strip()
+        article_date = None
+        try:
+            if any(x in d for x in ["초 전", "분 전", "시간 전", "방금 전", "오늘"]):
+                article_date = today
+            elif "어제" in d:
+                article_date = today - timedelta(days=1)
+            elif "그제" in d:
+                article_date = today - timedelta(days=2)
+            elif "일 전" in d:
+                days_ago = int(d.replace("일 전", "").strip())
+                article_date = today - timedelta(days=days_ago)
+            else:
+                if d.endswith("."):
+                    d = d[:-1]
+                article_date = datetime.strptime(d, "%Y.%m.%d").date()
+
+            if article_date in date_map and len(date_map[article_date]) < 30:
+                date_map[article_date].append(article)
+
+        except Exception as e:
+            print(f"[❌ 날짜 파싱 실패] {d} → {e}")
+            return
+
     for query in queries:
         base_url = f"https://search.naver.com/search.naver?where=news&query={query}&start="
-        today = datetime.now().date()
         for page in range(1, 11):
             start = (page - 1) * 10 + 1
             url = base_url + str(start)
-            response = requests.get(url, headers=headers)
-            soup = BeautifulSoup(response.text, "html.parser")
+            try:
+                response = requests.get(url, headers=headers, timeout=5)
+                soup = BeautifulSoup(response.text, "html.parser")
+            except Exception as e:
+                print(f"⛔ 요청 실패: {url} → {e}")
+                continue
+
             for item in soup.select("div.news_area"):
                 a_tag = item.select_one("a.news_tit")
                 press_tag = item.select_one("a.info.press")
@@ -31,40 +65,14 @@ def fetch_naver_news():
                 if not a_tag or not press_tag or not date_tag:
                     continue
 
-                title = a_tag.get_text(strip=True)
-                link = a_tag["href"]
-                press = press_tag.get_text(strip=True).replace("언론사 선정", "").strip()
-                date_str = date_tag.get_text(strip=True)
-
                 article = {
-                    "title": title,
-                    "url": link,
-                    "press": press,
-                    "date": date_str
+                    "title": a_tag.get_text(strip=True),
+                    "url": a_tag["href"],
+                    "press": press_tag.get_text(strip=True).replace("언론사 선정", "").strip(),
+                    "date": date_tag.get_text(strip=True)
                 }
 
-                all_articles.append(article)
-
-    # 날짜별 분류
-    targets = [today - timedelta(days=i) for i in range(4)]
-    date_map = {date: [] for date in targets}
-
-    def classify_article(date_str, article):
-        try:
-            if "일 전" in date_str:
-                days_ago = int(date_str.replace("일 전", "").strip())
-                article_date = today - timedelta(days=days_ago)
-            elif "시간 전" in date_str or "분 전" in date_str:
-                article_date = today
-            else:
-                article_date = datetime.strptime(date_str.strip(), "%Y.%m.%d.").date()
-        except:
-            return
-        if article_date in date_map and len(date_map[article_date]) < 30:
-            date_map[article_date].append(article)
-
-    for a in all_articles:
-        classify_article(a["date"], a)
+                classify_article(article["date"], article)
 
     result = {}
     for dt in targets:
